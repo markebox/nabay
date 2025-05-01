@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Voting App</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+        #loginOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #loginForm {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+        #app {
+            display: none;
+        }
+        #userView, #viewerView {
+            display: none;
+        }
+        .section-container {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .list-container {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 3px;
+        }
+        .list-container:nth-child(1) { background-color: #f0f8ff; } /* Alice Blue */
+        .list-container:nth-child(2) { background-color: #e0ffff; } /* Light Cyan */
+        .list-container:nth-child(3) { background-color: #f5f5dc; } /* Beige */
+        .candidate-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .controls button {
+            margin-left: 10px;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .vote-increase { background-color: #4CAF50; color: white; border: none; }
+        .vote-decrease { background-color: #f44336; color: white; border: none; }
+        #totalVotesDisplay {
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        #rankedCandidates {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        #rankedCandidates h3 {
+            margin-top: 0;
+        }
+        .top-candidate {
+            font-weight: bold;
+            color: green; /* Highlight top candidates */
+        }
+        #summaryTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        #summaryTable th, #summaryTable td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        #summaryAverages {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        #logoutButton {
+            margin-top: 20px;
+            padding: 8px 15px;
+            cursor: pointer;
+        }
+        /* Section Colors */
+        .section-container.section1 { border-color: #007bff; } /* Blue */
+        .section-container.section2 { border-color: #28a745; } /* Green */
+        .section-container.section3 { border-color: #dc3545; } /* Red */
+        .section-container.section4 { border-color: #ffc107; } /* Yellow */
+    </style>
+</head>
+<body>
+    <div id="loginOverlay">
+        <div id="loginForm">
+            <h2>Login</h2>
+            <input type="text" id="username" placeholder="Username"><br><br>
+            <input type="password" id="password" placeholder="Password"><br><br>
+            <button onclick="handleLogin()">Login</button>
+        </div>
+    </div>
+
+    <div id="app">
+        <div id="userView">
+            <h1>Voting Section: <span id="userSectionTitle"></span></h1>
+            <div id="candidateLists">
+                </div>
+            <div id="rankedCandidates">
+                <h3>Ranked Candidates (All Sections)</h3>
+                <ol id="rankedList"></ol>
+            </div>
+        </div>
+
+        <div id="viewerView">
+            <h1>Voting Summary</h1>
+            <table id="summaryTable">
+                <thead>
+                    <tr>
+                        <th>Candidate</th>
+                        <th>Total Votes</th>
+                        <th>Section 1</th>
+                        <th>Section 2</th>
+                        <th>Section 3</th>
+                        <th>Section 4</th>
+                    </tr>
+                </thead>
+                <tbody id="summaryTableBody">
+                    </tbody>
+            </table>
+            <div id="summaryAverages">
+                Averages per List:
+                <span id="avgList1">List 1: 0</span> |
+                <span id="avgList2">List 2: 0</span> |
+                <span id="avgList3">List 3: 0</span>
+            </div>
+        </div>
+
+        <button id="logoutButton" onclick="logout()">Logout</button>
+    </div>
+
+    <script>
+        // Placeholder for JavaScript logic (will be updated)
+        let currentVotes = {}; // To store votes temporarily client-side
+
+        // Generate candidate names
+        const allCandidates = Array.from({ length: 36 }, (_, i) => `Candidate ${i + 1}`);
+
+        // Group candidates into lists
+        const candidatesByList = [
+            allCandidates.slice(0, 12),
+            allCandidates.slice(12, 24),
+            allCandidates.slice(24, 36)
+        ];
+
+        const allCandidatesData = {
+            section1: { list1: candidatesByList[0], list2: candidatesByList[1], list3: candidatesByList[2] },
+            section2: { list1: candidatesByList[0], list2: candidatesByList[1], list3: candidatesByList[2] },
+            section3: { list1: candidatesByList[0], list2: candidatesByList[1], list3: candidatesByList[2] },
+            section4: { list1: candidatesByList[0], list2: candidatesByList[1], list3: candidatesByList[2] }
+        };
+
+
+        function handleLogin() {
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const username = usernameInput.value.toLowerCase();
+            const password = passwordInput.value;
+
+            if (username === 'user1' && password === 'password') {
+                showUserView('section1');
+            } else if (username === 'user2' && password === 'password') {
+                showUserView('section2');
+            } else if (username === 'user3' && password === 'password') {
+                showUserView('section3');
+            } else if (username === 'user4' && password === 'password') {
+                showUserView('section4');
+            } else if (username === 'viewer' && password === 'password') {
+                showViewerView();
+            } else {
+                alert('Login failed.');
+            }
+        }
+
+        function logout() {
+            document.getElementById('app').style.display = 'none';
+            document.getElementById('userView').style.display = 'none';
+            document.getElementById('viewerView').style.display = 'none';
+            document.getElementById('loginOverlay').style.display = 'flex';
+            currentVotes = {}; // Clear temporary votes on logout
+            // In a real application, you would also sign out from Firebase
+        }
+
+        function showUserView(section) {
+            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            document.getElementById('userView').style.display = 'block';
+            document.getElementById('viewerView').style.display = 'none';
+            document.getElementById('userSectionTitle').textContent = section.charAt(0).toUpperCase() + section.slice(1);
+            renderCandidateLists(section);
+            updateRankedCandidates(); // Placeholder call
+        }
+
+        function showViewerView() {
+            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            document.getElementById('userView').style.display = 'none';
+            document.getElementById('viewerView').style.display = 'block';
+            renderSummaryTable();
+        }
+
+        function renderCandidateLists(section) {
+            const candidateListsDiv = document.getElementById('candidateLists');
+            candidateListsDiv.innerHTML = '';
+            const listNames = ['Group A', 'Group B', 'Group C'];
+            const candidates = allCandidatesData[section];
+
+            for (let listNum = 1; listNum <= 3; listNum++) {
+                const sectionContainer = document.createElement('div');
+                sectionContainer.classList.add('section-container', section); // Add section color class
+                const title = document.createElement('h3');
+                title.textContent = `${listNames[listNum - 1]} (${candidates[`list${listNum}`].length} Candidates)`;
+                sectionContainer.appendChild(title);
+
+                const listContainer = document.createElement('ul');
+                listContainer.classList.add('list-container');
+
+                candidates[`list${listNum}`].forEach(candidateName => {
+                    const candidateId = `${section}-${listNum}-${candidateName.replace(' ', '')}`;
+                    const listItem = document.createElement('li');
+                    listItem.classList.add('candidate-item');
+                    listItem.innerHTML = `
+                        <span>${candidateName}: <span id="vote-${candidateId}">0</span></span>
+                        <div class="controls">
+                            <button class="vote-increase" onclick="updateVote('${candidateId}', 1)">+</button>
+                            <button class="vote-decrease" onclick="updateVote('${candidateId}', -1)">-</button>
+                        </div>
+                    `;
+                    listContainer.appendChild(listItem);
+                });
+                sectionContainer.appendChild(listContainer);
+                candidateListsDiv.appendChild(sectionContainer);
+            }
+            updateRankedCandidates(); // Placeholder call
+        }
+
+        function updateVote(candidateId, change) {
+            if (!currentVotes[candidateId]) {
+                currentVotes[candidateId] = 0;
+            }
+            currentVotes[candidateId] += change;
+            document.getElementById(`vote-${candidateId}`).textContent = currentVotes[candidateId];
+            updateRankedCandidates();
+            // In a real application, this would send the vote change to the backend
+        }
+
+        function updateRankedCandidates() {
+            const allCandidateVotes = {};
+            for (const section in allCandidatesData) {
+                for (const listNum in allCandidatesData[section]) {
+                    allCandidatesData[section][listNum].forEach(candidateName => {
+                        const candidateId = `${section}-${listNum.replace('list', '')}-${candidateName.replace(' ', '')}`;
+                        allCandidateVotes[candidateName] = (allCandidateVotes[candidateName] || 0) + (currentVotes[candidateId] || 0);
+                    });
+                }
+            }
+
+            const sortedCandidates = Object.entries(allCandidateVotes)
+                .sort(([, a], [, b]) => b - a)
+                .map(([name, votes]) => `${name}: ${votes}`);
+
+            const rankedListOl = document.getElementById('rankedList');
+            rankedListOl.innerHTML = '';
+            sortedCandidates.forEach((item, index) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = item;
+                if (index < 12) {
+                    listItem.classList.add('top-candidate');
+                }
+                rankedListOl.appendChild(listItem);
+            });
+        }
+
+        function renderSummaryTable() {
+            const summaryTableBody = document.getElementById('summaryTableBody');
+            summaryTableBody.innerHTML = '';
+            const sectionPrefixes = ['section1', 'section2', 'section3', 'section4'];
+            const allCandidates = {};
+            for (const section in allCandidatesData) {
+                for (const list in allCandidatesData[section]) {
+                    allCandidatesData[section][list].forEach(candidate => {
+                        allCandidates[candidate] = { total: 0, sections: {} };
+                    });
+                }
+            }
+
+            for (const section in allCandidatesData) {
+                for (const list in allCandidatesData[section]) {
+                    allCandidatesData[section][list].forEach(candidate => {
+                        const candidateId = `${section}-${list.replace('list', '')}-${candidate.replace(' ', '')}`;
+                        allCandidates[candidate].total += currentVotes[candidateId] || 0;
+                        allCandidates[candidate].sections[section] = currentVotes[candidateId] || 0;
+                    });
+                }
+            }
+
+            const sortedCandidates = Object.entries(allCandidates).sort(([, a], [, b]) => b.total - a.total);
+
+            sortedCandidates.forEach(([candidate, data]) => {
+                const row = summaryTableBody.insertRow();
+                const nameCell = row.insertCell();
+                const totalCell = row.insertCell();
+                const section1Cell = row.insertCell();
+                const section2Cell = row.insertCell();
+                const section3Cell = row.insertCell();
+                const section4Cell = row.insertCell();
+
+                nameCell.textContent = candidate;
+                totalCell.textContent = data.total;
+                section1Cell.textContent = data.sections['section1'] || 0;
+                section2Cell.textContent = data.sections['section2'] || 0;
+                section3Cell.textContent = data.sections['section3'] || 0;
+                section4Cell.textContent = data.sections['section4'] || 0;
+            });
+
+            calculateListAveragesForAllSections();
+        }
+
+        function calculateListAveragesForAllSections() {
+            const listTotals = [0, 0, 0];
+            const voteCounts = [0, 0, 0];
+
+            for (const section in allCandidatesData) {
+                for (let i = 1; i <= 3; i++) {
+                    const listKey = `list${i}`;
+                    allCandidatesData[section][listKey].forEach(candidate => {
+                        const candidateId = `${section}-${i}-${candidate.replace(' ', '')}`;
+                        listTotals[i - 1] += currentVotes[candidateId] || 0;
+                        voteCounts[i - 1]++;
+                    });
+                }
+
+                document.getElementById('avgList1').textContent = voteCounts[0] > 0 ? (listTotals[0] / voteCounts[0]).toFixed(2) : 0;
+                document.getElementById('avgList2').textContent = voteCounts[1] > 0 ? (listTotals[1] / voteCounts[1]).toFixed(2) : 0;
+                document.getElementById('avgList3').textContent = voteCounts[2] > 0 ? (listTotals[2] / voteCounts[2]).toFixed(2) : 0;
+            }
+        }
+    </script>
+</body>
+</html>
